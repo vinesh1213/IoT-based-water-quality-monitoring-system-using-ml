@@ -1,0 +1,404 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>AquaWatch — Deep Water Intelligence</title>
+  <meta name="description" content="Bioluminescent IoT water quality command center powered by ESP32 and Random Forest ML."/>
+
+  <!-- Fonts: Bebas Neue (display) + DM Mono (data) + Outfit (body) -->
+  <link rel="preconnect" href="https://fonts.googleapis.com"/>
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
+  <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=DM+Mono:ital,wght@0,300;0,400;0,500;1,300&family=Outfit:wght@200;300;400;500;600&display=swap" rel="stylesheet"/>
+  <!-- Chart.js -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+  <link rel="stylesheet" href="{% static 'css/style.css' %}?v=2"/>
+</head>
+<body>
+
+<!-- ═══════════════════════════════ AMBIENT LAYERS -->
+<div class="ambient-wrap">
+  <canvas id="bg-canvas"></canvas>
+  <div class="grid-overlay"></div>
+  <div class="vignette"></div>
+</div>
+
+<!-- ═══════════════════════════════ AMBIENT GLOW (tracks water quality) -->
+<div class="ambient-glow" id="ambient-glow"></div>
+
+<!-- ═══════════════════════════════ HEADER -->
+<header class="hdr">
+  <div class="hdr-inner">
+    <!-- Logo -->
+    <div class="logo">
+      <div class="logo-mark">
+        <svg viewBox="0 0 48 48" fill="none">
+          <circle cx="24" cy="24" r="22" stroke="currentColor" stroke-width="1.5" stroke-dasharray="3 3" opacity="0.4"/>
+          <circle cx="24" cy="24" r="15" stroke="currentColor" stroke-width="0.8" opacity="0.6"/>
+          <path d="M24 6C24 6 11 18 11 26a13 13 0 0 0 26 0C37 18 24 6 24 6Z" fill="currentColor" opacity="0.9"/>
+          <circle cx="24" cy="28" r="5" fill="var(--bg)" opacity="0.85"/>
+          <path d="M24 20 v3 M22 22 h4" stroke="var(--bg)" stroke-width="1.5" stroke-linecap="round"/>
+        </svg>
+      </div>
+      <div class="logo-text">
+        <span class="logo-name">AQUAWATCH</span>
+        <span class="logo-sub">Deep Water Intelligence</span>
+      </div>
+    </div>
+
+    <!-- System status strip -->
+    <div class="sys-strip">
+      <div class="sys-item">
+        <span class="sys-dot" id="sys-dot"></span>
+        <span class="sys-label" id="sys-label">CONNECTING</span>
+      </div>
+      <div class="sys-divider"></div>
+      <div class="sys-item">
+        <span class="sys-key">MODEL</span>
+        <span class="sys-val">RANDOM FOREST</span>
+      </div>
+      <div class="sys-divider"></div>
+      <div class="sys-item">
+        <span class="sys-key">DB</span>
+        <span class="sys-val">SQLITE</span>
+      </div>
+      <div class="sys-divider"></div>
+      <div class="sys-item">
+        <span class="sys-key">REFRESH</span>
+        <span class="sys-val" id="countdown-val">10s</span>
+      </div>
+      <div class="sys-divider"></div>
+      <div class="sys-item">
+        <button id="theme-toggle" class="theme-btn" aria-label="Toggle theme">
+          <svg id="theme-icon-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display:none;"><circle cx="12" cy="12" r="5"></circle><line x1="12" y1="1" x2="12" y2="3"></line><line x1="12" y1="21" x2="12" y2="23"></line><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"></line><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"></line><line x1="1" y1="12" x2="3" y2="12"></line><line x1="21" y1="12" x2="23" y2="12"></line><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"></line><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"></line></svg>
+          <svg id="theme-icon-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path></svg>
+        </button>
+      </div>
+    </div>
+
+    <div class="hdr-clock" id="hdr-clock"></div>
+  </div>
+</header>
+
+<!-- ═══════════════════════════════ HERO SECTION -->
+<section class="hero">
+
+  <!-- LEFT: Giant status orb -->
+  <div class="orb-col">
+    <div class="orb-wrap">
+      <!-- Ripple rings -->
+      <div class="ripple r1" id="ripple1"></div>
+      <div class="ripple r2" id="ripple2"></div>
+      <div class="ripple r3" id="ripple3"></div>
+
+      <!-- Main orb SVG -->
+      <svg class="orb-svg" viewBox="0 0 300 300" id="orb-svg">
+        <!-- Outer decorative rings -->
+        <circle cx="150" cy="150" r="140" stroke="currentColor" stroke-width="0.5" stroke-dasharray="8 4" opacity="0.2" fill="none"/>
+        <circle cx="150" cy="150" r="130" stroke="currentColor" stroke-width="0.3" opacity="0.15" fill="none"/>
+
+        <!-- Track -->
+        <circle class="orb-track" cx="150" cy="150" r="118"/>
+        <!-- Progress arc -->
+        <circle class="orb-arc" id="orb-arc" cx="150" cy="150" r="118"/>
+
+        <!-- Second arc (inner) -->
+        <circle class="orb-track-inner" cx="150" cy="150" r="98"/>
+        <circle class="orb-arc-inner" id="orb-arc-inner" cx="150" cy="150" r="98"/>
+
+        <!-- Tick marks -->
+        <g id="tick-marks" opacity="0.35"></g>
+
+        <!-- Center glow -->
+        <circle class="orb-glow" id="orb-glow-circle" cx="150" cy="150" r="75"/>
+
+        <!-- Data text -->
+        <text x="150" y="132" class="orb-label-svg" text-anchor="middle">WATER STATUS</text>
+        <text x="150" y="172" class="orb-value-svg" id="orb-value-text" text-anchor="middle">—</text>
+        <text x="150" y="192" class="orb-conf-svg" id="orb-conf-text" text-anchor="middle">Awaiting sensor data</text>
+      </svg>
+
+      <!-- Floating class badges -->
+      <div class="class-badges">
+        <div class="cbadge hazard" id="cbadge-hazard">
+          <span class="cbadge-dot"></span>
+          <span class="cbadge-name">HAZARD</span>
+          <span class="cbadge-val" id="cbadge-val-hazard">—</span>
+        </div>
+        <div class="cbadge good" id="cbadge-good">
+          <span class="cbadge-dot"></span>
+          <span class="cbadge-name">GOOD</span>
+          <span class="cbadge-val" id="cbadge-val-good">—</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- RIGHT: Circular arc gauges + stats -->
+  <div class="gauges-col">
+    <div class="gauges-title">SENSOR READINGS</div>
+
+    <div class="arc-gauges">
+      <!-- pH Gauge -->
+      <div class="arc-gauge" id="ag-ph">
+        <svg viewBox="0 0 160 160" class="arc-svg">
+          <path class="ag-track" d="M 80 140 A 60 60 0 1 1 80.001 140" id="ag-track-ph"/>
+          <path class="ag-fill" id="ag-fill-ph" d="M 80 140 A 60 60 0 1 1 80.001 140" stroke="var(--cyan)" stroke-dasharray="0 377"/>
+          <circle cx="80" cy="80" r="42" class="ag-inner"/>
+          <text x="80" y="72" text-anchor="middle" class="ag-val-text" id="ag-val-ph">—</text>
+          <text x="80" y="90" text-anchor="middle" class="ag-unit-text">pH</text>
+          <text x="80" y="130" text-anchor="middle" class="ag-name-text">ACIDITY</text>
+        </svg>
+        <div class="ag-status" id="ag-status-ph">NOMINAL</div>
+      </div>
+
+      <!-- Turbidity Gauge -->
+      <div class="arc-gauge" id="ag-turb">
+        <svg viewBox="0 0 160 160" class="arc-svg">
+          <path class="ag-track" d="M 80 140 A 60 60 0 1 1 80.001 140"/>
+          <path class="ag-fill" id="ag-fill-turb" d="M 80 140 A 60 60 0 1 1 80.001 140" stroke="var(--violet)" stroke-dasharray="0 377"/>
+          <circle cx="80" cy="80" r="42" class="ag-inner"/>
+          <text x="80" y="72" text-anchor="middle" class="ag-val-text" id="ag-val-turb">—</text>
+          <text x="80" y="90" text-anchor="middle" class="ag-unit-text">NTU</text>
+          <text x="80" y="130" text-anchor="middle" class="ag-name-text">TURBIDITY</text>
+        </svg>
+        <div class="ag-status" id="ag-status-turb">NOMINAL</div>
+      </div>
+
+      <!-- Temperature Gauge -->
+      <div class="arc-gauge" id="ag-temp">
+        <svg viewBox="0 0 160 160" class="arc-svg">
+          <path class="ag-track" d="M 80 140 A 60 60 0 1 1 80.001 140"/>
+          <path class="ag-fill" id="ag-fill-temp" d="M 80 140 A 60 60 0 1 1 80.001 140" stroke="var(--amber)" stroke-dasharray="0 377"/>
+          <circle cx="80" cy="80" r="42" class="ag-inner"/>
+          <text x="80" y="72" text-anchor="middle" class="ag-val-text" id="ag-val-temp">—</text>
+          <text x="80" y="90" text-anchor="middle" class="ag-unit-text">°C</text>
+          <text x="80" y="130" text-anchor="middle" class="ag-name-text">TEMPERATURE</text>
+        </svg>
+        <div class="ag-status" id="ag-status-temp">NOMINAL</div>
+      </div>
+    </div>
+
+    <!-- Stat counters -->
+    <div class="hero-stats">
+      <div class="hstat">
+        <div class="hstat-num" id="hs-total">0</div>
+        <div class="hstat-lbl">TOTAL</div>
+      </div>
+      <div class="hstat hazard-tint">
+        <div class="hstat-num" id="hs-hazard">0</div>
+        <div class="hstat-lbl">HAZARD</div>
+      </div>
+      <div class="hstat good-tint">
+        <div class="hstat-num" id="hs-good">0</div>
+        <div class="hstat-lbl">GOOD</div>
+      </div>
+    </div>
+
+    <!-- Last reading meta -->
+    <div class="last-meta" id="last-meta">
+      <span class="lm-icon">⏱</span>
+      <span id="lm-time">No data received yet</span>
+    </div>
+  </div>
+</section>
+
+<!-- ═══════════════════════════════ CHART SECTION -->
+<section class="charts-section">
+  <div class="charts-header">
+    <h2 class="section-title">TREND ANALYSIS</h2>
+    <div class="chart-mode-tabs">
+      <button class="ctab active" data-range="20" onclick="setRange(this,20)">LAST 20</button>
+      <button class="ctab" data-range="50" onclick="setRange(this,50)">LAST 50</button>
+      <button class="ctab" data-range="100" onclick="setRange(this,100)">LAST 100</button>
+    </div>
+  </div>
+
+  <div class="charts-grid">
+    <div class="chart-card" id="cc-ph">
+      <div class="cc-head">
+        <span class="cc-label">pH LEVEL</span>
+        <span class="cc-avg" id="cavg-ph">Avg: —</span>
+      </div>
+      <div class="cc-body"><canvas id="chart-ph"></canvas></div>
+      <div class="cc-danger-band">
+        <span class="cb-low">ACID &lt;6.5</span>
+        <span class="cb-ok">IDEAL 6.5–7.5</span>
+        <span class="cb-high">ALKALINE&gt;7.5</span>
+      </div>
+    </div>
+
+    <div class="chart-card" id="cc-turb">
+      <div class="cc-head">
+        <span class="cc-label">TURBIDITY</span>
+        <span class="cc-avg" id="cavg-turb">Avg: —</span>
+      </div>
+      <div class="cc-body"><canvas id="chart-turb"></canvas></div>
+      <div class="cc-danger-band">
+        <span class="cb-low">CLEAR 0–4</span>
+        <span class="cb-ok">WARN 4–100</span>
+        <span class="cb-high">HAZARD &gt;100</span>
+      </div>
+    </div>
+
+    <div class="chart-card" id="cc-temp">
+      <div class="cc-head">
+        <span class="cc-label">TEMPERATURE</span>
+        <span class="cc-avg" id="cavg-temp">Avg: —</span>
+      </div>
+      <div class="cc-body"><canvas id="chart-temp"></canvas></div>
+      <div class="cc-danger-band">
+        <span class="cb-low">COLD &lt;10°C</span>
+        <span class="cb-ok">IDEAL 10–30</span>
+        <span class="cb-high">HOT &gt;30°C</span>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ═══════════════════════════════ DATA TABLE SECTION -->
+<section class="table-section">
+  <div class="table-header">
+    <h2 class="section-title">SENSOR LOG</h2>
+    <div class="table-actions">
+      <button class="action-btn primary" id="sim-btn" onclick="sendTestReading()">
+        <span class="btn-icon">⚡</span>
+        SIMULATE ESP32
+      </button>
+      <button class="action-btn" onclick="refreshAll()">
+        <span class="btn-icon">↻</span>
+        REFRESH
+      </button>
+    </div>
+  </div>
+
+  <div class="tbl-wrap">
+    <table id="data-table">
+      <thead>
+        <tr>
+          <th>ID</th>
+          <th>TIMESTAMP</th>
+          <th>pH</th>
+          <th>TURBIDITY <small>(NTU)</small></th>
+          <th>TEMP <small>(°C)</small></th>
+          <th>PREDICTION</th>
+          <th>CONFIDENCE</th>
+        </tr>
+      </thead>
+      <tbody id="tbl-body">
+        {% if recent %}
+          {% for row in recent %}
+          <tr>
+            <td class="td-id">{{ row.id }}</td>
+            <td class="td-time">{{ row.created_at|date:"d M Y • H:i:s" }}</td>
+            <td class="td-num">{{ row.ph }}</td>
+            <td class="td-num">{{ row.turbidity }}</td>
+            <td class="td-num">{{ row.temperature }}</td>
+            <td><span class="pred-tag pred-{{ row.prediction|lower }}">{{ row.prediction }}</span></td>
+            <td class="td-conf">{{ row.confidence }}</td>
+          </tr>
+          {% endfor %}
+        {% else %}
+          <tr><td colspan="7" class="tbl-empty">No readings yet — use the SIMULATE button above</td></tr>
+        {% endif %}
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<!-- ═══════════════════════════════ FOOTER -->
+<footer class="ftr">
+  <div class="ftr-inner">
+    <span class="ftr-brand">AQUAWATCH © 2026</span>
+    <span class="ftr-mid">ESP32 › DJANGO REST › RANDOM FOREST › SQLITE</span>
+    <span class="ftr-sync" id="ftr-sync">—</span>
+  </div>
+</footer>
+
+<!-- ═══════════════════════════════ SCRIPTS -->
+<script src="{% static 'js/dashboard.js' %}?v=2"></script>
+<script>
+/* ── Bioluminescent particle canvas ──────────────────────────────────────── */
+(function() {
+  const C = document.getElementById('bg-canvas');
+  const ctx = C.getContext('2d');
+  let W, H;
+  const resize = () => { W = C.width = window.innerWidth; H = C.height = window.innerHeight; };
+  window.addEventListener('resize', resize); resize();
+
+  // Flowing particles
+  const N = 80;
+  const pts = Array.from({length: N}, () => ({
+    x: Math.random() * W, y: Math.random() * H,
+    vx: (Math.random()-.5)*.25, vy: (Math.random()-.5)*.25,
+    r: Math.random()*2+.5, a: Math.random()*.12+.02, phase: Math.random()*Math.PI*2
+  }));
+
+  let t = 0;
+  function frame() {
+    ctx.clearRect(0,0,W,H);
+    t += 0.005;
+
+    // Draw connections
+    for(let i=0;i<N;i++) {
+      for(let j=i+1;j<N;j++) {
+        const dx=pts[i].x-pts[j].x, dy=pts[i].y-pts[j].y;
+        const d=Math.sqrt(dx*dx+dy*dy);
+        if(d<120) {
+          ctx.beginPath();
+          ctx.strokeStyle=`rgba(0,255,220,${(1-d/120)*0.06})`;
+          ctx.lineWidth=0.5;
+          ctx.moveTo(pts[i].x,pts[i].y);
+          ctx.lineTo(pts[j].x,pts[j].y);
+          ctx.stroke();
+        }
+      }
+    }
+    // Draw particles
+    pts.forEach(p => {
+      p.x+=p.vx; p.y+=p.vy;
+      if(p.x<0)p.x=W; if(p.x>W)p.x=0;
+      if(p.y<0)p.y=H; if(p.y>H)p.y=0;
+      const pulse = Math.sin(t*2+p.phase)*0.5+0.5;
+      ctx.beginPath();
+      ctx.arc(p.x,p.y,p.r*(1+pulse*.3),0,Math.PI*2);
+      ctx.fillStyle=`rgba(0,255,220,${p.a*(0.6+pulse*0.4)})`;
+      ctx.fill();
+    });
+    requestAnimationFrame(frame);
+  }
+  frame();
+})();
+
+/* ── SVG tick marks around orb ─────────────────────────────────────────── */
+(function() {
+  const g = document.getElementById('tick-marks');
+  const cx=150, cy=150, r=130;
+  for(let i=0;i<60;i++) {
+    const a=(i/60)*Math.PI*2 - Math.PI/2;
+    const inner = i%5===0 ? r-10 : r-6;
+    const x1=cx+Math.cos(a)*inner, y1=cy+Math.sin(a)*inner;
+    const x2=cx+Math.cos(a)*r,    y2=cy+Math.sin(a)*r;
+    const line=document.createElementNS('http://www.w3.org/2000/svg','line');
+    line.setAttribute('x1',x1); line.setAttribute('y1',y1);
+    line.setAttribute('x2',x2); line.setAttribute('y2',y2);
+    line.setAttribute('stroke', i%5===0?'rgba(0,255,220,0.5)':'rgba(0,255,220,0.15)');
+    line.setAttribute('stroke-width', i%5===0?'1.5':'0.8');
+    g.appendChild(line);
+  }
+})();
+
+/* ── Live clock ─────────────────────────────────────────────────────────── */
+(function tick() {
+  const el = document.getElementById('hdr-clock');
+  if(el) {
+    const now = new Date();
+    el.innerHTML = now.toLocaleDateString('en-IN',{day:'2-digit',month:'short',year:'numeric'}) +
+      ' &nbsp; ' + now.toLocaleTimeString('en-IN',{hour12:false});
+  }
+  setTimeout(tick,1000);
+})();
+</script>
+</body>
+</html>

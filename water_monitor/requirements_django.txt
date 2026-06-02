@@ -1,0 +1,13 @@
+# Django + API dependencies
+django>=4.2
+djangorestframework>=3.14
+django-cors-headers>=4.3
+
+# ML model loading (models already trained in model_outputs/)
+joblib>=1.3.0
+pandas>=2.0.0
+numpy>=1.24.0
+scikit-learn>=1.3.0
+
+# Excel dataset reading (only if retraining)
+openpyxl>=3.1.0
